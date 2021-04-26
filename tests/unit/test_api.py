@@ -135,7 +135,7 @@ def test_sync_release_version_tag_processing(
     api_mock.up.package_config.upstream_tag_template = "v{version}"
     api_mock.up.should_receive("get_version").and_return(get_version_return)
     api_mock.should_receive("_prepare_files_to_sync").with_args(
-        raw_sync_files=[], full_version=version, upstream_tag=tag
+        synced_files=[], full_version=version, upstream_tag=tag
     )
     flexmock(PatchGenerator).should_receive("undo_identical")
     with expectation:

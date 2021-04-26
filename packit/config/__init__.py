@@ -38,11 +38,6 @@ from packit.config.package_config import (
     get_local_package_config,
     parse_loaded_config,
 )
-from packit.config.sync_files_config import (
-    SyncFilesConfig,
-    SyncFilesItem,
-    RawSyncFilesItem,
-)
 
 __all__ = [
     Config.__name__,
@@ -50,10 +45,7 @@ __all__ = [
     JobConfigTriggerType.__name__,
     JobType.__name__,
     PackageConfig.__name__,
-    RawSyncFilesItem.__name__,
     RunCommandType.__name__,
-    SyncFilesConfig.__name__,
-    SyncFilesItem.__name__,
     "get_context_settings",
     "get_default_map_from_file",
     "parse_loaded_config",

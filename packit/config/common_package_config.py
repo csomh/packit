@@ -25,6 +25,7 @@ Common package config attributes so they can be imported both in PackageConfig a
 """
 import os
 from typing import Dict, List, Optional, Union
+from pathlib import Path
 
 from packit.actions import ActionName
 from packit.config.notifications import (
@@ -32,7 +33,6 @@ from packit.config.notifications import (
     PullRequestNotificationsConfig,
 )
 from packit.config.sources import SourcesItem
-from packit.config.sync_files_config import SyncFilesConfig
 from packit.constants import PROD_DISTGIT_URL
 from packit.sync import SyncFilesItem
 
@@ -54,7 +54,7 @@ class CommonPackageConfig:
         self,
         config_file_path: Optional[str] = None,
         specfile_path: Optional[str] = None,
-        synced_files: Optional[SyncFilesConfig] = None,
+        synced_files: Optional[List[SyncFilesItem]] = None,
         dist_git_namespace: str = None,
         upstream_project_url: str = None,  # can be URL or path
         upstream_package_name: str = None,
@@ -78,7 +78,7 @@ class CommonPackageConfig:
     ):
         self.config_file_path: Optional[str] = config_file_path
         self.specfile_path: Optional[str] = specfile_path
-        self.synced_files: SyncFilesConfig = synced_files or SyncFilesConfig([])
+        self.synced_files: List[SyncFilesItem] = synced_files or []
         self.patch_generation_ignore_paths = patch_generation_ignore_paths or []
         self.dist_git_namespace: str = dist_git_namespace or "rpms"
         self.upstream_project_url: Optional[str] = upstream_project_url
@@ -156,7 +156,7 @@ class CommonPackageConfig:
         :return: SyncFilesItem
         """
         return SyncFilesItem(
-            src=self.specfile_path,
+            src=[self.specfile_path],
             dest=f"{self.downstream_package_name}.spec"
             if self.downstream_package_name
             else self.specfile_path,
@@ -165,19 +165,19 @@ class CommonPackageConfig:
     def get_all_files_to_sync(self):
         """
         Adds the default files (config file, spec file) to synced files when doing propose-update.
-        :return: SyncFilesConfig with default files
+        :return: Files to be synced
         """
-        files = self.synced_files.files_to_sync
+        files = self.synced_files
 
-        if self.specfile_path not in (item.src for item in files):
+        if Path(self.specfile_path) not in sum([item.src for item in files], []):
             files.append(self.get_specfile_sync_files_item())
 
-        if self.config_file_path and self.config_file_path not in (
-            item.src for item in files
+        if Path(self.config_file_path) and self.config_file_path not in sum(
+            [item.src for item in files], []
         ):
             # this relative because of glob: "Non-relative patterns are unsupported"
             files.append(
-                SyncFilesItem(src=self.config_file_path, dest=self.config_file_path)
+                SyncFilesItem(src=[self.config_file_path], dest=self.config_file_path)
             )
 
-        return SyncFilesConfig(files)
+        return files

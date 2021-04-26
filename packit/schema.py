@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from logging import getLogger
-from typing import Dict, Any, Optional, Mapping, Union
+from typing import Dict, Any, Optional, Mapping, Union, List
 
 from marshmallow import Schema, fields, post_load, pre_load, ValidationError
 from marshmallow_enum import EnumField
@@ -24,10 +24,27 @@ from packit.config.aliases import DEPRECATED_TARGET_MAP
 logger = getLogger(__name__)
 
 
+class StringOrListOfStringsField(fields.Field):
+    """Field type expecting a string or a list"""
+
+    def _serialize(self, value, attr, obj, **kwargs) -> List[str]:
+        return [str(item) for item in value]
+
+    def _deserialize(self, value, attr, data, **kwargs) -> List[str]:
+        if isinstance(value, list) and all(isinstance(v, str) for v in value):
+            return value
+        elif isinstance(value, str):
+            return [value]
+        else:
+            raise ValidationError(
+                f"Expected 'list[str]' or 'str', got {type(value)!r}."
+            )
+
+
 class SyncFilesItemSchema(Schema):
     """Schema for SyncFilesItem"""
 
-    src = fields.String()
+    src = StringOrListOfStringsField()
     dest = fields.String()
 
 
@@ -39,7 +56,7 @@ class FilesToSyncField(fields.Field):
     of a dict matching SyncFilesItemSchema.
     """
 
-    def _serialize(self, value: Any, attr: str, obj: Any, **kwargs):
+    def _serialize(self, value: Any, attr: str, obj: Any, **kwargs) -> List[dict]:
         return SyncFilesItemSchema().dump(value)
 
     def _deserialize(
@@ -52,9 +69,9 @@ class FilesToSyncField(fields.Field):
         if isinstance(value, dict):
             return SyncFilesItem(**SyncFilesItemSchema().load(value))
         elif isinstance(value, str):
-            return SyncFilesItem(src=value, dest=value)
+            return SyncFilesItem(src=[value], dest=value)
         else:
-            raise ValidationError(f"'dict' or 'str' required, got {type(value)!r}.")
+            raise ValidationError(f"Expected 'dict' or 'str', got {type(value)!r}.")
 
 
 class ActionField(fields.Field):

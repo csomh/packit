@@ -1,42 +1,45 @@
-# MIT License
-#
-# Copyright (c) 2019 Red Hat, Inc.
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# Copyright Contributors to the Packit project.
+# SPDX-License-Identifier: MIT
 
 import logging
-import shutil
 from pathlib import Path
-from typing import List
-from typing import NamedTuple, Union
+from typing import List, Optional, Union, Sequence
 
 from packit.exceptions import PackitException
+from packit.utils import run_command
 
 logger = logging.getLogger(__name__)
 
 
-class SyncFilesItem(NamedTuple):
-    src: Union[str, List[str]]
-    dest: str
+def check_subpath(subpath: Path, path: Path) -> Path:
+    """Check if 'subpath' is a subpath of 'path'
+    Args:
+        subpath: Subpath to be checked.
+        path: Path agains which subpath is checked.
+    Returns:
+        'subpath', in case it is a subpath of 'path'.
+    Raises:
+        PackitException, if 'subpath' is not a subpath of 'path'.
+    """
+    subpath_resolved = subpath.resolve()
+    path_resolved = path.resolve()
+    if not str(subpath_resolved).startswith(str(path_resolved)):
+        raise PackitException(
+            f"Sync files: Illegal path! {subpath} is not a subpath of {path}."
+        )
+    return subpath
+
+
+class SyncFilesItem:
+    def __init__(self, src: Sequence[Union[str, Path]], dest: Union[str, Path]):
+        self.src = [Path(s) for s in src]
+        self.dest = Path(dest)
 
     def __repr__(self):
         return f"SyncFilesItem(src={self.src}, dest={self.dest})"
+
+    def __str__(self):
+        return " ".join(self.command())
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, SyncFilesItem):
@@ -44,84 +47,35 @@ class SyncFilesItem(NamedTuple):
 
         return self.src == other.src and self.dest == other.dest
 
+    def command(self) -> List[str]:
+        command = ["rsync", "--archive"]
+        command += [str(s) for s in self.src]
+        command += [str(self.dest)]
+        return command
 
-class RawSyncFilesItem(NamedTuple):
-    src: Path
-    dest: Path
-    # when dest is specified with trailing slash, it is meant to be a dir
-    dest_is_dir: bool
+    def resolve(self, src_base: Path = Path.cwd(), dest_base: Path = Path.cwd()):
+        """Resolve all paths and check they are relative to src_base and dest_base"""
+        self.src = [check_subpath(src_base / path, src_base) for path in self.src]
+        self.dest = check_subpath(dest_base / self.dest, dest_base)
 
-    def __repr__(self):
-        return f"RawSyncFilesItem(src={self.src}, dest={self.dest}, dist_is_dir={self.dest_is_dir})"
+    def drop_src(
+        self, src: Union[str, Path], criteria=lambda x, y: x != y
+    ) -> Optional["SyncFilesItem"]:
+        """Remove 'src' from the list of src-s
 
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, RawSyncFilesItem):
-            raise NotImplementedError()
-
-        return (
-            self.src == other.src
-            and self.dest == other.dest
-            and self.dest_is_dir == other.dest_is_dir
-        )
-
-    def reversed(self) -> "RawSyncFilesItem":
-        return RawSyncFilesItem(
-            src=self.dest, dest=self.src, dest_is_dir=self.dest_is_dir
-        )
-
-
-def get_raw_files(
-    src_dir: Path, dest_dir: Path, file_to_sync: SyncFilesItem
-) -> List[RawSyncFilesItem]:
-    """
-    Split SyncFilesItem into multiple RawSyncFilesItem instances (src can be a list)
-
-    Destination is used from the original SyncFilesItem.
-    """
-    source = file_to_sync.src
-    if not isinstance(source, list):
-        source = [source]
-    files_to_sync: List[RawSyncFilesItem] = []
-    for file in source:
-        globs = src_dir.glob(file)
-        target = dest_dir.joinpath(file_to_sync.dest)
-        for g in globs:
-            files_to_sync.append(
-                RawSyncFilesItem(
-                    src=g,
-                    dest=target,
-                    dest_is_dir=True if file_to_sync.dest.endswith("/") else False,
-                )
-            )
-    return files_to_sync
+        This creates and returns a new SyncFilesItem instance if the internal
+        src list still has some items after 'src' is removed. Otherwise returns None.
+        """
+        new_src = [s for s in self.src if criteria(s, src)]
+        if new_src:
+            return SyncFilesItem(new_src, self.dest)
+        else:
+            return None
 
 
-def sync_files(files_to_sync: List[RawSyncFilesItem], fail_on_missing=False) -> None:
+def sync_files(synced_files: Sequence[SyncFilesItem]):
     """
     Copy files b/w upstream and downstream repo.
     """
-    logger.debug(f"Copy synced files {files_to_sync}")
-
-    for fi in files_to_sync:
-        src = Path(fi.src)
-        dest = Path(fi.dest)
-        logger.debug(f"src = {src}, dest = {dest}")
-        if src.exists():
-            if src.is_dir():
-                logger.debug("`src` is a dir, will use copytree")
-                if dest.is_dir():
-                    logger.debug(f"Dest dir {dest} exists, rmtree it first")
-                    shutil.rmtree(dest, ignore_errors=True)
-                logger.info(f"Copying tree {src} to {dest}.")
-                shutil.copytree(src, dest)
-            else:
-                if fi.dest_is_dir:
-                    logger.info(f"Creating target directory: {dest}")
-                    dest.mkdir(parents=True, exist_ok=True)
-                logger.info(f"Copying {src} to {dest}.")
-                shutil.copy2(src, dest)
-        else:
-            if fail_on_missing:
-                raise PackitException(f"Path {src} does not exist.")
-            else:
-                logger.info(f"Path {src} does not exist. Not syncing.")
+    for item in synced_files:
+        run_command(item.command(), print_live=True)

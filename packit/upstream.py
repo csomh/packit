@@ -210,6 +210,7 @@ class Upstream(PackitRepositoryBase):
 
         sync_files_to_ignore = [
             str(sf.src.relative_to(self.local_project.working_dir))
+            # CONTINUE
             for sf in self.package_config.get_all_files_to_sync().get_raw_files_to_sync(
                 self.local_project.working_dir,
                 Path(

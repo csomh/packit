@@ -33,7 +33,7 @@ from packit.config.common_package_config import CommonPackageConfig
 from packit.config.job_config import JobConfig, get_default_jobs, JobType
 from packit.config.notifications import NotificationsConfig
 from packit.config.sources import SourcesItem
-from packit.config.sync_files_config import SyncFilesConfig
+from packit.sync import SyncFilesItem
 from packit.constants import CONFIG_FILE_NAMES
 from packit.exceptions import PackitConfigException
 
@@ -50,7 +50,7 @@ class PackageConfig(CommonPackageConfig):
         self,
         config_file_path: Optional[str] = None,
         specfile_path: Optional[str] = None,
-        synced_files: Optional[SyncFilesConfig] = None,
+        synced_files: Optional[List[SyncFilesItem]] = None,
         jobs: Optional[List[JobConfig]] = None,
         dist_git_namespace: str = None,
         upstream_project_url: str = None,  # can be URL or path
