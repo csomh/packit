@@ -242,11 +242,18 @@ def test_create_srcgit_requre_clean(api_instance_source_git, tmp_path: Path):
     # TODO(csomh): is 'packit srpm' the best way to do it. Maybe producing an update to
     # dist-git with 'packit source-git update-dist-git' would make more sense.
     subprocess.check_call(
-        ["packit", "--config", ".distro/source-git.yaml", "srpm"], cwd=source_git_path
+        [
+            "packit",
+            "--config",
+            ".distro/source-git.yaml",
+            "source-git",
+            "update-dist-git",
+            ".",
+            str(dist_git_path),
+        ],
+        cwd=source_git_path,
     )
-    srpm_path = list(source_git_path.glob("python-requre-0.4.0-2.*.src.rpm"))[0]
-    assert srpm_path.is_file()
-    # requre needs sphinx, so SRPM is fine
+    dg_lp.git_repo.git.diff(exit_code=True)
 
     # verify the archive is not committed in the source-git
     with pytest.raises(subprocess.CalledProcessError) as exc:
