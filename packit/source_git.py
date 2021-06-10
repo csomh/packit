@@ -195,6 +195,7 @@ class SourceGitGenerator:
         self.dist_git_branch = dist_git_branch
         self.distro_dir = Path(self.local_project.working_dir, self.DISTRO_DIR)
         self.package_name = package_name
+        self._patch_comments: dict = {}
 
         logger.info(
             f"The source-git repo is going to be created in {local_project.working_dir}."
@@ -439,8 +440,8 @@ class SourceGitGenerator:
         self.local_project.fetch(BUILD_dir, f"+{from_branch}:{to_branch}")
 
         # transform into {patch_name: patch_id}
-        patch_ids = {
-            Path(p.path).name: p.index
+        various_patch_meta = {
+            p.get_patch_name(): {"index": p.index}
             for p in self.dist_git.specfile.patches.get("applied", [])
         }
 
@@ -462,7 +463,12 @@ class SourceGitGenerator:
             # during the rpm patching process so we need to do it here.
             metadata = PatchMetadata.from_commit(commit=commit)
             # commit.message already ends with \n
-            message = f"{commit.message}patch_id: {patch_ids[metadata.name]}"
+            message = commit.message
+            message += f"patch_id: {various_patch_meta[metadata.name]['index']}\n"
+            if self._patch_comments.get(metadata.name):
+                message += "description: |-\n"
+            for line in self._patch_comments.get(metadata.name, []):
+                message += f"    {line}\n"
             self.local_project.commit(message, amend=True)
 
         self.local_project.git_repo.git.branch("-D", to_branch)
@@ -547,7 +553,7 @@ class SourceGitGenerator:
             f"{self.distro_dir}/{self.package_name}.spec",
             sources_dir=self.dist_git.local_project.working_dir,
         )
-        spec.read_patch_comments()
+        self._patch_comments = spec.read_patch_comments()
         spec.remove_patches()
 
     def _download_source_files(self):
